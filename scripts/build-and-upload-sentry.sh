@@ -37,17 +37,17 @@ if [[ -z "${SENTRY_AUTH_TOKEN:-}" ]]; then
   exit 1
 fi
 
-ORG_SLUG="${SENTRY_ORG:?SENTRY_ORG not set}"
-PROJECT_SLUG="${SENTRY_PROJECT:-kp-llm-throughput-frontend-cx}"
+ORG_SLUG="${SENTRY_ORG:-}"
+PROJECT_SLUG="${SENTRY_PROJECT:-}"
 
-echo "Creating Sentry release and uploading source maps (org=$ORG_SLUG, project=$PROJECT_SLUG)"
+echo "Creating Sentry release and uploading source maps (org=${ORG_SLUG:-from .sentryclirc}, project=${PROJECT_SLUG:-from .sentryclirc})"
 
 # Create or update the release and associate commits
-npx --yes @sentry/cli releases --org "$ORG_SLUG" --project "$PROJECT_SLUG" new "$RELEASE" || true
-npx --yes @sentry/cli releases --org "$ORG_SLUG" --project "$PROJECT_SLUG" set-commits "$RELEASE" --auto || true
+npx --yes @sentry/cli releases new "$RELEASE" || true
+npx --yes @sentry/cli releases set-commits "$RELEASE" --auto || true
 
 # Upload source maps for CRA build; served from root ("/") via Express static
-npx --yes @sentry/cli sourcemaps --org "$ORG_SLUG" --project "$PROJECT_SLUG" upload \
+npx --yes @sentry/cli sourcemaps upload \
   --release "$RELEASE" \
   --rewrite \
   --validate \
@@ -56,7 +56,7 @@ npx --yes @sentry/cli sourcemaps --org "$ORG_SLUG" --project "$PROJECT_SLUG" upl
   client/build
 
 # Finalize the release
-npx --yes @sentry/cli releases --org "$ORG_SLUG" --project "$PROJECT_SLUG" finalize "$RELEASE" || true
+npx --yes @sentry/cli releases finalize "$RELEASE" || true
 
 echo "Sentry release $RELEASE created and source maps uploaded."
 

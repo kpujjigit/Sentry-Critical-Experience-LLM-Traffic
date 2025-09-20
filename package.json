@@ -15,6 +15,9 @@
   "keywords": ["sentry", "llm", "performance", "monitoring", "demo"],
   "author": "Demo Application",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "dependencies": {
     "@sentry/node": "^7.100.0",
     "@sentry/profiling-node": "^7.100.0",

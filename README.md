@@ -35,7 +35,7 @@ The application includes several intentional pain points perfect for demonstrati
 ## Local Setup
 
 ### Prerequisites
-- Node.js 18+ and npm
+- Node.js 20.18+ and npm (use `.nvmrc`)
 - A Sentry project DSN (optional for basic functionality)
 
 ### Quick Start
@@ -75,6 +75,12 @@ The application includes several intentional pain points perfect for demonstrati
    ```
    
    This starts both backend (port 3001) and frontend (port 3000)
+
+### Build & Source Maps
+
+- Ensure Node 20.18+ is active (`nvm use`)
+- `npm run build` builds the client, computes a release, and uploads source maps via sentry-cli using `.sentryclirc` defaults.
+- Verify in Sentry: events from the frontend show deobfuscated stack traces for the same `release` as the build.
 
 4. **Access the application**
    - Frontend: http://localhost:3000
