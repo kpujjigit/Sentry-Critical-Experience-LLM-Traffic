@@ -48,6 +48,14 @@ class LLMService {
         });
         const httpStart = Date.now();
         try {
+          // Intentional network slowdown for demo (visible as its own span)
+          const netSpan = createSpan(transaction, {
+            op: 'llm.network',
+            description: 'Intentional LLM network latency (demo)'
+          });
+          await simulateDelay('llm_network', 800, 2500);
+          finishSpan(netSpan, { reason: 'demo_intentional_slowdown' });
+
           structuredData = await this.callHuggingFaceForProduct(rawProductData, url);
           finishSpan(hfSpan, {
             llm_http_success: true,
@@ -74,6 +82,20 @@ class LLMService {
         op: 'llm.analysis',
         description: 'Analyze and structure product data'
       });
+      // Occasionally add extra analysis latency (less common than network)
+      try {
+        const slowProb = parseFloat(process.env.LLM_SLOW_ANALYSIS_PROB || '0.25');
+        if (Math.random() < slowProb) {
+          const minMs = parseInt(process.env.LLM_SLOW_ANALYSIS_MIN_MS || '2000');
+          const maxMs = parseInt(process.env.LLM_SLOW_ANALYSIS_MAX_MS || '6000');
+          const t = Date.now();
+          await simulateDelay('llm_analysis_slow', minMs, maxMs);
+          if (analysisSpan) {
+            analysisSpan.setTag('llm.analysis_slow', true);
+            analysisSpan.setData('llm_analysis_extra_delay_ms', Date.now() - t);
+          }
+        }
+      } catch (_) {}
       finishSpan(analysisSpan, {
         analysis_success: true,
         structured_fields: Object.keys(structuredData).length
@@ -287,7 +309,23 @@ class LLMService {
       description: 'Parse product information from raw data'
     });
     
+    // Baseline parsing work
     await simulateDelay('llm_analysis', 200, 800);
+    
+    // Occasionally add extra parsing latency (rarer than analysis/network)
+    try {
+      const slowProb = parseFloat(process.env.LLM_SLOW_PARSING_PROB || '0.15');
+      if (Math.random() < slowProb) {
+        const minMs = parseInt(process.env.LLM_SLOW_PARSING_MIN_MS || '1500');
+        const maxMs = parseInt(process.env.LLM_SLOW_PARSING_MAX_MS || '4000');
+        const t = Date.now();
+        await simulateDelay('llm_parsing_slow', minMs, maxMs);
+        if (parsingSpan) {
+          parsingSpan.setTag('llm.parsing_slow', true);
+          parsingSpan.setData('llm_parsing_extra_delay_ms', Date.now() - t);
+        }
+      }
+    } catch (_) {}
     
     // Extract price trend data (mock)
     const currentPrice = parseFloat(rawProductData.price.replace('$', ''));

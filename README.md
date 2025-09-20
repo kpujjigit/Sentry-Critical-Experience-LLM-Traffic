@@ -47,11 +47,25 @@ The application includes several intentional pain points perfect for demonstrati
    npm run install:all
    ```
 
-2. **Configure Sentry (Optional)**
-   ```bash
-   cp .env.example .env
-   # Edit .env and set your Sentry DSN
-   ```
+2. **Configure Environment (Sentry + Hugging Face)**
+   - Create env files from examples and fill in values:
+     ```bash
+     cp .env.example .env
+     cp client/.env.example client/.env
+     ```
+   - Required values:
+     - Backend (root `.env`):
+       - `SENTRY_DSN` (Node project DSN: kp-llm-throughput-backend-cx)
+       - `SENTRY_ENVIRONMENT` (e.g., development)
+       - `HUGGING_FACE_API_KEY` (to leverage DialoGPT-medium)
+       - Optional demo controls: `ARTIFICIAL_LATENCY_MS`, `ERROR_RATE_PERCENT`
+     - Frontend (`client/.env`):
+       - `REACT_APP_SENTRY_DSN` (React project DSN: kp-llm-throughput-frontend-cx)
+       - `REACT_APP_SENTRY_ENVIRONMENT`
+     - Build/upload (root `.env`):
+       - `SENTRY_AUTH_TOKEN` (scoped token to upload source maps)
+       - `SENTRY_ORG=team-se`
+       - `SENTRY_PROJECT=kp-llm-throughput-frontend-cx`
 
 3. **Start the application**
    ```bash
@@ -78,6 +92,8 @@ The simulator emits:
 - `product.analyze` spans with complete analysis workflow
 - `scraping.fetch` spans with store-specific scraping performance
 - `llm.inference` spans with processing times, confidence scores, and token usage
+- `llm.http` span for Hugging Face call (with success/failure + duration)
+- `llm.network` span for intentional network latency (demo)
 - `simulation.session` spans with user behavior patterns
 - `ui.action.user` spans for frontend interactions
 
@@ -105,10 +121,13 @@ The application supports product analysis from 10 major platforms:
 - **User Interaction Tracking** for button clicks, form submissions
 - **Network Request Monitoring** with response times and error rates
 - **Real-time Error Boundary** with automatic Sentry reporting
+  - Releases & Source Maps: `npm run build` creates a Sentry release and uploads CRA source maps using `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT`.
 
 ### Backend (Node.js + Express)  
 - **Distributed Tracing** across all API endpoints
 - **Custom LLM Monitoring** with inference time and confidence tracking
+- **Hugging Face Integration** using `HUGGING_FACE_API_KEY` and model `microsoft/DialoGPT-medium` with fallback to mock parser
+- **Intentional Network Latency** span `llm.network` to showcase dashboards
 - **Performance Profiling** with CPU and memory analysis
 - **Structured Logging** with contextual breadcrumbs
 - **Error Tracking** with detailed stack traces and context
@@ -117,6 +136,7 @@ The application supports product analysis from 10 major platforms:
 - **Token Usage Tracking** for cost monitoring
 - **Model Performance Metrics** including confidence scores
 - **Processing Time Analysis** for performance optimization
+- **Network Latency Visibility** via `llm.http` and `llm.network` spans for dashboards
 - **Failure Rate Monitoring** for reliability insights
 
 ## Sentry: Custom Dashboard & Alert Ideas
@@ -229,14 +249,16 @@ GET /api/simulate/status
 - Check that ports 3000 and 3001 are available
 
 **Sentry data not appearing**
-- Verify SENTRY_DSN is set correctly in your .env file
+- Verify `SENTRY_DSN` (backend) and `REACT_APP_SENTRY_DSN` (frontend) are set
 - Check that your Sentry project has the correct permissions
 - Ensure your Sentry plan supports the features you're using
+- For releases/source maps, ensure `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` are set and run `npm run build`
 
 **Simulation not generating data**
 - Check browser console for JavaScript errors
 - Verify backend is running on port 3001
 - Check network connectivity between frontend and backend
+ - If using the Hugging Face integration, ensure `HUGGING_FACE_API_KEY` is set; otherwise, the app falls back to mock parsing.
 
 **Performance issues during simulation**
 - Reduce the number of concurrent sessions
