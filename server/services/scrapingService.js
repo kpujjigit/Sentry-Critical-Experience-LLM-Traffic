@@ -1,6 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { simulateDelay, simulateError } = require('../utils/demoUtils');
+const { Sentry, createSpan, finishSpan } = require('../middleware/sentry');
 
 // Mock product data for demo purposes (since actual scraping would be complex)
 const MOCK_PRODUCT_DATA = {
@@ -48,24 +49,39 @@ const MOCK_PRODUCT_DATA = {
 const scrapeProductPage = async (url) => {
   const startTime = Date.now();
   
+  // Get current transaction for creating child spans
+  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  
   try {
+    // Create main scraping span
+    const scrapingSpan = createSpan(transaction, {
+      op: 'scraping.page',
+      description: `Scrape product page: ${url}`
+    });
+    
+    if (scrapingSpan) {
+      scrapingSpan.setTag('scraping_url', url);
+      scrapingSpan.setTag('scraping_method', 'mock_data'); // For demo purposes
+    }
+
     // Simulate scraping delay
     await simulateDelay('web_scraping', 500, 2000);
     
     // Simulate occasional scraping failures for demo
     simulateError('scraping_failure', 0.08); // 8% failure rate
 
-    console.log(`Scraping product from: ${url}`);
+    console.log(`🕷️ Scraping product from: ${url}`);
     
     // Determine which mock data to use based on URL
     let mockData;
     const parsedUrl = new URL(url);
+    const domain = parsedUrl.hostname.toLowerCase();
     
-    if (parsedUrl.hostname.includes('amazon')) {
+    if (domain.includes('amazon')) {
       mockData = MOCK_PRODUCT_DATA['amazon.com'];
-    } else if (parsedUrl.hostname.includes('walmart')) {
+    } else if (domain.includes('walmart')) {
       mockData = MOCK_PRODUCT_DATA['walmart.com'];
-    } else if (parsedUrl.hostname.includes('target')) {
+    } else if (domain.includes('target')) {
       mockData = MOCK_PRODUCT_DATA['target.com'];
     } else {
       // Default fallback data
@@ -96,16 +112,69 @@ const scrapeProductPage = async (url) => {
       }
     };
 
-    console.log(`Successfully scraped product: ${scrapedData.title}`);
+    // Add validation span
+    const validationSpan = createSpan(transaction, {
+      op: 'scraping.validation',
+      description: 'Validate scraped data completeness'
+    });
+    
+    const requiredFields = ['title', 'price', 'rating', 'availability'];
+    const missingFields = requiredFields.filter(field => !scrapedData[field]);
+    
+    finishSpan(validationSpan, {
+      required_fields: requiredFields.length,
+      missing_fields: missingFields.length,
+      validation_success: missingFields.length === 0
+    });
+
+    finishSpan(scrapingSpan, {
+      scraping_duration_ms: Date.now() - startTime,
+      product_title: scrapedData.title,
+      product_price: newPrice,
+      data_completeness_score: ((requiredFields.length - missingFields.length) / requiredFields.length * 100),
+      scraping_success: true
+    });
+
+    // Add breadcrumb for successful scraping
+    Sentry.addBreadcrumb({
+      message: `Successfully scraped product: ${scrapedData.title}`,
+      category: 'scraping',
+      level: 'info',
+      data: {
+        url: url,
+        productTitle: scrapedData.title,
+        duration: Date.now() - startTime,
+        dataFields: Object.keys(scrapedData).length
+      }
+    });
+
+    console.log(`✅ Successfully scraped product: ${scrapedData.title}`);
     return scrapedData;
 
   } catch (error) {
-    console.error('Scraping failed:', error);
+    console.error('❌ Scraping failed:', error);
+    
+    const scrapingDuration = Date.now() - startTime;
+    
+    // Capture scraping error in Sentry
+    Sentry.captureException(error, {
+      tags: {
+        error_type: 'scraping_failed',
+        scraping_stage: 'page_fetch',
+        target_url: url
+      },
+      extra: {
+        url: url,
+        scraping_duration_ms: scrapingDuration,
+        error_details: error.message
+      },
+      level: 'error'
+    });
     
     const scrapingError = new Error('Failed to scrape product page');
     scrapingError.code = 'SCRAPING_FAILED';
     scrapingError.originalError = error;
-    scrapingError.duration = Date.now() - startTime;
+    scrapingError.duration = scrapingDuration;
     scrapingError.url = url;
     
     throw scrapingError;
@@ -113,6 +182,8 @@ const scrapeProductPage = async (url) => {
 };
 
 const validateUrl = (url) => {
+  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  
   try {
     const parsedUrl = new URL(url);
     
@@ -128,6 +199,25 @@ const validateUrl = (url) => {
       parsedUrl.hostname.includes(domain)
     );
     
+    // Add validation breadcrumb
+    Sentry.addBreadcrumb({
+      message: `URL validation: ${url}`,
+      category: 'validation',
+      level: isSupported ? 'info' : 'warning',
+      data: {
+        url: url,
+        domain: parsedUrl.hostname,
+        protocol: parsedUrl.protocol,
+        supported: isSupported
+      }
+    });
+    
+    if (transaction) {
+      transaction.setTag('url_valid', true);
+      transaction.setTag('url_supported', isSupported);
+      transaction.setTag('url_domain', parsedUrl.hostname);
+    }
+    
     return {
       valid: true,
       supported: isSupported,
@@ -135,6 +225,23 @@ const validateUrl = (url) => {
       protocol: parsedUrl.protocol
     };
   } catch (error) {
+    // Capture URL validation error
+    Sentry.captureException(error, {
+      tags: {
+        error_type: 'url_validation_failed',
+        invalid_url: url
+      },
+      extra: {
+        attempted_url: url,
+        error_details: error.message
+      },
+      level: 'warning'
+    });
+    
+    if (transaction) {
+      transaction.setTag('url_valid', false);
+    }
+    
     return {
       valid: false,
       supported: false,

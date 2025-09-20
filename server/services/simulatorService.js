@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const { Sentry, createSpan, finishSpan } = require('../middleware/sentry');
 
 // Sample URLs for simulation
 const SAMPLE_URLS = [
@@ -85,10 +86,36 @@ class SimulatorService {
 
     this.activeSimulations.set(simulationId, simulation);
 
+    // Create Sentry transaction for the entire simulation
+    const transaction = Sentry.startTransaction({
+      name: 'simulation.run',
+      op: 'simulation'
+    });
+    
+    transaction.setTag('simulation_id', simulationId);
+    transaction.setTag('total_sessions', sessions.toString());
+    transaction.setTag('session_delay', delay.toString());
+    transaction.setContext('simulation', {
+      id: simulationId,
+      sessions: sessions,
+      delay: delay,
+      startTime: startTime.toISOString()
+    });
+
     // Start the simulation in the background
-    this.runSimulation(simulation).catch(error => {
-      console.error('Simulation error:', error);
+    this.runSimulation(simulation, transaction).catch(error => {
+      console.error('❌ Simulation error:', error);
       simulation.isRunning = false;
+      
+      Sentry.captureException(error, {
+        tags: {
+          simulation_id: simulationId,
+          error_type: 'simulation_execution_failed'
+        }
+      });
+      
+      transaction.setStatus('internal_error');
+      transaction.finish();
     });
 
     return simulation;
@@ -140,14 +167,14 @@ class SimulatorService {
     };
   }
 
-  async runSimulation(simulation) {
-    console.log(`Starting simulation ${simulation.id} with ${simulation.sessions} sessions`);
+  async runSimulation(simulation, transaction) {
+    console.log(`🎯 Starting simulation ${simulation.id} with ${simulation.sessions} sessions`);
     
     const promises = [];
     
     // Create all user sessions
     for (let i = 0; i < simulation.sessions && simulation.isRunning; i++) {
-      const sessionPromise = this.simulateUserSession(simulation, i);
+      const sessionPromise = this.simulateUserSession(simulation, i, transaction);
       promises.push(sessionPromise);
       
       // Stagger session starts
@@ -157,18 +184,43 @@ class SimulatorService {
     }
 
     // Wait for all sessions to complete
-    await Promise.allSettled(promises);
+    const results = await Promise.allSettled(promises);
     
     simulation.isRunning = false;
-    console.log(`Simulation ${simulation.id} completed`);
+    console.log(`✅ Simulation ${simulation.id} completed`);
+
+    // Add final metrics to transaction
+    if (transaction) {
+      transaction.setMeasurement('total_sessions', simulation.sessions);
+      transaction.setMeasurement('completed_sessions', simulation.completed);
+      transaction.setMeasurement('failed_sessions', simulation.failed);
+      transaction.setMeasurement('total_requests', simulation.statistics.totalRequests);
+      transaction.setMeasurement('successful_requests', simulation.statistics.successfulRequests);
+      transaction.setMeasurement('failed_requests', simulation.statistics.failedRequests);
+      transaction.setMeasurement('avg_response_time', this.calculateAvgResponseTime(simulation.statistics.responseTimes));
+      
+      transaction.setTag('simulation_completed', true);
+      transaction.setStatus('ok');
+      transaction.finish();
+    }
   }
 
-  async simulateUserSession(simulation, sessionIndex) {
+  async simulateUserSession(simulation, sessionIndex, parentTransaction) {
     const sessionStartTime = Date.now();
     const userBehavior = this.selectUserBehavior();
     const sessionId = `session_${sessionIndex}_${Date.now()}`;
     
-    console.log(`Starting ${userBehavior.name} session ${sessionIndex + 1}/${simulation.sessions}`);
+    // Create session transaction as child of simulation
+    const sessionTransaction = parentTransaction.startChild({
+      op: 'simulation.session',
+      description: `${userBehavior.name} session ${sessionIndex + 1}`
+    });
+    
+    sessionTransaction.setTag('session_index', sessionIndex.toString());
+    sessionTransaction.setTag('user_behavior', userBehavior.name);
+    sessionTransaction.setTag('session_id', sessionId);
+    
+    console.log(`👤 Starting ${userBehavior.name} session ${sessionIndex + 1}/${simulation.sessions}`);
     
     try {
       const sessionLength = Math.floor(
@@ -176,9 +228,11 @@ class SimulatorService {
         userBehavior.sessionLength.min
       );
 
+      sessionTransaction.setMeasurement('planned_requests', sessionLength);
+
       // Simulate user requests in this session
       for (let req = 0; req < sessionLength && simulation.isRunning; req++) {
-        await this.simulateUserRequest(simulation, userBehavior, sessionId);
+        await this.simulateUserRequest(simulation, userBehavior, sessionId, sessionTransaction);
         
         // Wait between requests (user thinking time)
         const thinkTime = Math.floor(
@@ -192,20 +246,40 @@ class SimulatorService {
       const sessionDuration = Date.now() - sessionStartTime;
       simulation.statistics.sessionDurations.push(sessionDuration);
       
+      sessionTransaction.setMeasurement('session_duration_ms', sessionDuration);
+      sessionTransaction.setTag('session_completed', true);
+      sessionTransaction.setStatus('ok');
+      sessionTransaction.finish();
+      
     } catch (error) {
-      console.error(`Session ${sessionIndex} failed:`, error.message);
+      console.error(`❌ Session ${sessionIndex} failed:`, error.message);
       simulation.failed++;
       
       // Track error types
       const errorType = error.code || 'UNKNOWN_ERROR';
       simulation.statistics.errorCounts[errorType] = 
         (simulation.statistics.errorCounts[errorType] || 0) + 1;
+
+      sessionTransaction.setTag('session_completed', false);
+      sessionTransaction.setTag('error_type', errorType);
+      sessionTransaction.setStatus('internal_error');
+      sessionTransaction.finish();
     }
   }
 
-  async simulateUserRequest(simulation, userBehavior, sessionId) {
+  async simulateUserRequest(simulation, userBehavior, sessionId, sessionTransaction) {
     const startTime = Date.now();
     const url = this.getRandomUrl();
+    
+    // Create request span
+    const requestSpan = sessionTransaction.startChild({
+      op: 'simulation.request',
+      description: `Analyze product: ${new URL(url).hostname}`
+    });
+    
+    requestSpan.setTag('request_url', url);
+    requestSpan.setTag('user_behavior', userBehavior.name);
+    requestSpan.setTag('target_store', new URL(url).hostname);
     
     try {
       simulation.statistics.totalRequests++;
@@ -226,21 +300,41 @@ class SimulatorService {
       simulation.statistics.responseTimes.push(responseTime);
       simulation.statistics.successfulRequests++;
       
-      console.log(`✓ ${userBehavior.name} analyzed ${url} in ${responseTime}ms`);
+      requestSpan.setMeasurement('response_time_ms', responseTime);
+      requestSpan.setTag('request_success', true);
+      requestSpan.setTag('response_status', response.status.toString());
+      
+      if (response.data.data) {
+        requestSpan.setData('product_title', response.data.data.basic_info.title);
+        requestSpan.setData('product_price', response.data.data.basic_info.current_price);
+        requestSpan.setData('store_name', response.data.data.store);
+      }
+      
+      requestSpan.setStatus('ok');
+      requestSpan.finish();
+      
+      console.log(`✅ ${userBehavior.name} analyzed ${url} in ${responseTime}ms`);
       
     } catch (error) {
       const responseTime = Date.now() - startTime;
       simulation.statistics.responseTimes.push(responseTime);
       simulation.statistics.failedRequests++;
       
-      console.log(`✗ ${userBehavior.name} failed to analyze ${url}: ${error.message}`);
+      requestSpan.setMeasurement('response_time_ms', responseTime);
+      requestSpan.setTag('request_success', false);
+      requestSpan.setTag('error_code', error.code || 'UNKNOWN_ERROR');
+      requestSpan.setTag('error_message', error.message);
+      requestSpan.setStatus('internal_error');
+      requestSpan.finish();
+      
+      console.log(`❌ ${userBehavior.name} failed to analyze ${url}: ${error.message}`);
       
       // Decide whether to retry based on user behavior
       if (Math.random() < userBehavior.errorTolerance) {
-        console.log(`${userBehavior.name} retrying request...`);
+        console.log(`🔄 ${userBehavior.name} retrying request...`);
         // Simulate retry delay
         await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.simulateUserRequest(simulation, userBehavior, sessionId);
+        return this.simulateUserRequest(simulation, userBehavior, sessionId, sessionTransaction);
       }
       
       throw error;

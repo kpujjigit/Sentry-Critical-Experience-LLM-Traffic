@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
-import { ChatMessage, ProductAnalysis } from '../types';
+import * as Sentry from '@sentry/react';
+import { ChatMessage } from '../types';
 import { productAPI } from '../services/api';
 import ProductCard from './ProductCard';
 import LoadingSpinner from './LoadingSpinner';
@@ -146,8 +147,26 @@ const ChatBot: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Load sample URLs
-    productAPI.getSampleUrls().then(urls => setSampleUrls(urls.slice(0, 3)));
+    // Track component mount
+    Sentry.addBreadcrumb({
+      message: 'ChatBot component mounted',
+      category: 'ui.lifecycle',
+      level: 'info'
+    });
+
+    // Load sample URLs with Sentry tracking
+    const loadSampleUrls = async () => {
+      try {
+        const urls = await productAPI.getSampleUrls();
+        setSampleUrls(urls.slice(0, 3));
+      } catch (error) {
+        Sentry.captureException(error, {
+          tags: { component: 'ChatBot', operation: 'load_sample_urls' }
+        });
+      }
+    };
+
+    loadSampleUrls();
 
     // Welcome message
     addMessage({
@@ -179,25 +198,48 @@ const ChatBot: React.FC = () => {
     
     if (!urlToAnalyze) return;
 
-    // Add user message
-    addMessage({
-      type: 'user',
-      content: urlToAnalyze
+    // Track user interaction with Sentry
+    const transaction = Sentry.startTransaction({
+      name: 'chatbot.analyze_product',
+      op: 'ui.action.user',
+      data: {
+        input_url: urlToAnalyze,
+        input_method: url ? 'sample_button' : 'manual_input',
+        message_count: messages.length
+      }
     });
 
-    // Add loading message
-    const loadingMessageId = Date.now().toString();
-    addMessage({
-      type: 'bot',
-      content: 'Analyzing product... This may take a few seconds.',
-      loading: true,
-      id: loadingMessageId
+    Sentry.setUser({
+      id: `user_${Date.now()}`,
+      username: 'demo_user'
     });
 
-    setInputUrl('');
-    setIsLoading(true);
+    Sentry.setContext('chat_session', {
+      messages_count: messages.length,
+      input_method: url ? 'sample_button_click' : 'manual_input',
+      url_analyzed: urlToAnalyze
+    });
 
     try {
+      // Add user message
+      addMessage({
+        type: 'user',
+        content: urlToAnalyze
+      });
+
+      // Add loading message
+      const loadingMessageId = Date.now().toString();
+      addMessage({
+        type: 'bot',
+        content: 'Analyzing product... This may take a few seconds.',
+        loading: true,
+        id: loadingMessageId
+      });
+
+      setInputUrl('');
+      setIsLoading(true);
+
+      // Track the API call
       const response = await productAPI.analyzeProduct(urlToAnalyze);
       
       // Remove loading message
@@ -209,11 +251,51 @@ const ChatBot: React.FC = () => {
           content: `Great! I found information about "${response.data.basic_info.title}". Here's the analysis:`,
           data: response.data
         });
+
+        // Track successful analysis
+        transaction.setMeasurement('analysis_duration', response.data.analysis_metadata.total_duration_ms);
+        transaction.setMeasurement('product_price', response.data.basic_info.current_price);
+        transaction.setMeasurement('confidence_score', response.data.llm_metadata.confidence_score);
+        transaction.setTag('store_name', response.data.store);
+        transaction.setTag('product_category', response.data.basic_info.category);
+        transaction.setTag('analysis_success', true);
+        transaction.setStatus('ok');
+
+        // Track user engagement metrics
+        Sentry.addBreadcrumb({
+          message: `Product analyzed: ${response.data.basic_info.title}`,
+          category: 'user.action',
+          level: 'info',
+          data: {
+            store: response.data.store,
+            price: response.data.basic_info.current_price,
+            rating: response.data.reviews.average_rating,
+            analysisTime: response.data.analysis_metadata.total_duration_ms
+          }
+        });
       } else {
         addMessage({
           type: 'bot',
           content: `Sorry, I couldn't analyze that URL. ${response.error || 'Please try a different product URL.'}`,
           error: true
+        });
+
+        // Track failed analysis
+        transaction.setTag('analysis_success', false);
+        transaction.setTag('error_code', response.code || 'unknown');
+        transaction.setStatus('internal_error');
+
+        Sentry.captureMessage('Product analysis failed', {
+          level: 'warning',
+          tags: {
+            component: 'ChatBot',
+            error_code: response.code,
+            url: urlToAnalyze
+          },
+          extra: {
+            error_message: response.error,
+            user_input: urlToAnalyze
+          }
         });
       }
     } catch (error) {
@@ -225,16 +307,52 @@ const ChatBot: React.FC = () => {
         content: 'Sorry, something went wrong. Please try again.',
         error: true
       });
+
+      // Track exception
+      Sentry.captureException(error, {
+        tags: {
+          component: 'ChatBot',
+          operation: 'product_analysis',
+          url: urlToAnalyze
+        }
+      });
+
+      transaction.setTag('analysis_success', false);
+      transaction.setStatus('internal_error');
     } finally {
       setIsLoading(false);
+      transaction.finish();
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      
+      // Track keyboard interaction
+      Sentry.addBreadcrumb({
+        message: 'User pressed Enter to submit',
+        category: 'ui.input',
+        level: 'info'
+      });
+      
       handleSubmit();
     }
+  };
+
+  const handleSampleUrlClick = (url: string) => {
+    // Track sample URL click
+    Sentry.addBreadcrumb({
+      message: `Sample URL clicked: ${new URL(url).hostname}`,
+      category: 'ui.click',
+      level: 'info',
+      data: {
+        url: url,
+        store: new URL(url).hostname
+      }
+    });
+
+    handleSubmit(url);
   };
 
   return (
@@ -277,7 +395,7 @@ const ChatBot: React.FC = () => {
             {sampleUrls.map((url, index) => (
               <SampleUrlButton 
                 key={index} 
-                onClick={() => handleSubmit(url)}
+                onClick={() => handleSampleUrlClick(url)}
                 disabled={isLoading}
               >
                 {new URL(url).hostname}

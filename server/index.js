@@ -4,13 +4,13 @@ const helmet = require('helmet');
 const path = require('path');
 require('dotenv').config();
 
-// Import Sentry configuration (will be added in Phase 2)
-const { setupSentry } = require('./middleware/sentry');
+// Import Sentry configuration
+const { setupSentry, errorHandler } = require('./middleware/sentry');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Setup Sentry (placeholder for Phase 2)
+// Setup Sentry (must be first!)
 setupSentry(app);
 
 // Middleware
@@ -55,7 +55,10 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Error handling middleware (will be enhanced with Sentry in Phase 2)
+// Sentry error handling middleware (must be before other error handlers)
+app.use(errorHandler());
+
+// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
@@ -70,8 +73,8 @@ app.use('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
 });
 
 module.exports = app;
