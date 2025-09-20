@@ -1,4 +1,4 @@
-# Phase 3: Sentry Trace Explorer & Dashboards Guide
+# Sentry Trace Explorer & Dashboards Guide
 
 ## Critical User Workflows Identification
 
