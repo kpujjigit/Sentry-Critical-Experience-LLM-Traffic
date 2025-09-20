@@ -29,34 +29,51 @@ class LLMService {
         llmSpan.setData('product_title', rawProductData.title);
       }
 
-      // Simulate LLM processing time and potential issues
-      await simulateDelay('llm_inference', 1000, 4000);
-      
-      // Add processing step spans
+      // Validation step
       const validationSpan = createSpan(transaction, {
         op: 'llm.validation',
         description: 'Validate input data for LLM processing'
       });
-      
       finishSpan(validationSpan, {
         validation_success: true,
         input_fields_count: Object.keys(rawProductData).length
       });
-      
-      // Simulate LLM API issues for demo (timeouts, rate limits)
-      simulateError('llm_timeout', 0.12); // 12% chance of timeout
-      simulateError('rate_limited', 0.05); // 5% chance of rate limiting
-      
-      // Analysis span
+
+      // Attempt real Hugging Face call if API key present; else fallback to mock
+      let structuredData;
+      if (this.apiKey) {
+        const hfSpan = createSpan(transaction, {
+          op: 'llm.http',
+          description: `Call Hugging Face ${this.model}`
+        });
+        const httpStart = Date.now();
+        try {
+          structuredData = await this.callHuggingFaceForProduct(rawProductData, url);
+          finishSpan(hfSpan, {
+            llm_http_success: true,
+            llm_http_duration_ms: Date.now() - httpStart,
+            model: this.model
+          });
+        } catch (hfError) {
+          finishSpan(hfSpan, {
+            llm_http_success: false,
+            llm_http_duration_ms: Date.now() - httpStart,
+            model: this.model,
+            error_message: hfError.message
+          });
+          // Fallback to mock parser on error
+          structuredData = await this.mockLLMParsing(rawProductData, url);
+        }
+      } else {
+        // No key provided, use mock
+        structuredData = await this.mockLLMParsing(rawProductData, url);
+      }
+
+      // Analysis span (post-processing/normalization step)
       const analysisSpan = createSpan(transaction, {
         op: 'llm.analysis',
         description: 'Analyze and structure product data'
       });
-      
-      // For demo purposes, we'll use structured parsing instead of actual LLM API
-      // In a real implementation, you would send the raw HTML to the LLM for parsing
-      const structuredData = await this.mockLLMParsing(rawProductData, url);
-      
       finishSpan(analysisSpan, {
         analysis_success: true,
         structured_fields: Object.keys(structuredData).length
@@ -135,6 +152,129 @@ class LLMService {
       llmError.duration = processingTime;
       throw llmError;
     }
+  }
+
+  async callHuggingFaceForProduct(rawProductData, url) {
+    const prompt = this.buildPrompt(rawProductData, url);
+    const endpoint = `${this.baseUrl}/${encodeURIComponent(this.model)}`;
+    const headers = {
+      'Authorization': `Bearer ${this.apiKey}`,
+      'Content-Type': 'application/json'
+    };
+    const body = {
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 600,
+        temperature: 0.2,
+        return_full_text: false
+      }
+    };
+
+    const response = await axios.post(endpoint, body, { headers, timeout: 60000 });
+    const output = Array.isArray(response.data) ? response.data[0]?.generated_text : response.data?.generated_text || '';
+    if (!output || typeof output !== 'string') {
+      throw new Error('Unexpected Hugging Face response');
+    }
+
+    const json = this.extractJson(output);
+    return this.normalizeStructuredData(json, rawProductData);
+  }
+
+  buildPrompt(rawProductData, url) {
+    const seed = {
+      title: rawProductData.title,
+      price: rawProductData.price,
+      originalPrice: rawProductData.originalPrice,
+      rating: rawProductData.rating,
+      reviewCount: rawProductData.reviewCount,
+      availability: rawProductData.availability,
+      shipping: rawProductData.shipping,
+      category: rawProductData.category,
+      url
+    };
+
+    return [
+      'You are an assistant that extracts e-commerce product data and returns ONLY strict JSON.',
+      'Given the raw fields below, output JSON matching:',
+      '{',
+      '  "basic_info": { "title": string, "current_price": number, "original_price": number, "discount_percent": string, "availability": string, "category": string },',
+      '  "reviews": { "average_rating": number, "total_reviews": number, "rating_distribution": {"1": number, "2": number, "3": number, "4": number, "5": number} },',
+      '  "shipping": { "is_free": boolean, "is_fast": boolean, "description": string, "estimated_days": number },',
+      '  "price_analysis": { "current_price": number, "price_trend_7d": number[], "lowest_price_7d": number, "highest_price_7d": number, "is_good_deal": boolean },',
+      '  "features": string[],',
+      '  "value_metrics": { "overall_score": number, "discount_score": number, "rating_score": number, "popularity_score": number, "recommendation": string }',
+      '}',
+      'Rules:',
+      '- Return ONLY JSON. No comments or code fences.',
+      '- Convert "$" prices to numbers; compute discount_percent as a string with one decimal and %.',
+      '- Infer is_free/is_fast from shipping text; set estimated_days = 2 if fast, else 5 if free, else 7.',
+      `Raw Input: ${JSON.stringify(seed)}`
+    ].join('\n');
+  }
+
+  extractJson(text) {
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('No JSON found in HF output');
+      return JSON.parse(match[0]);
+    }
+  }
+
+  normalizeStructuredData(data, rawProductData) {
+    const toNum = (v, def = 0) => {
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string') {
+        const n = parseFloat(v.replace(/[^0-9.\-]/g, ''));
+        return Number.isFinite(n) ? n : def;
+      }
+      return def;
+    };
+
+    const currentPrice = toNum(data?.basic_info?.current_price, toNum(rawProductData.price));
+    const originalPrice = toNum(
+      data?.basic_info?.original_price,
+      rawProductData.originalPrice ? toNum(rawProductData.originalPrice) : currentPrice * 1.2
+    );
+    const priceHistory = Array.isArray(data?.price_analysis?.price_trend_7d) && data.price_analysis.price_trend_7d.length >= 3
+      ? data.price_analysis.price_trend_7d.map(n => toNum(n))
+      : this.generateMockPriceHistory(currentPrice, originalPrice);
+
+    const rating = toNum(data?.reviews?.average_rating, toNum(rawProductData.rating));
+    const totalReviews = toNum(
+      data?.reviews?.total_reviews,
+      parseInt((rawProductData.reviewCount || '0').replace(/,/g, ''))
+    );
+
+    const valueScore = this.calculateValueScore(currentPrice, originalPrice, rating, totalReviews);
+
+    return {
+      basic_info: {
+        title: data?.basic_info?.title || rawProductData.title,
+        current_price: currentPrice,
+        original_price: originalPrice,
+        discount_percent: (((originalPrice - currentPrice) / (originalPrice || 1)) * 100).toFixed(1),
+        availability: data?.basic_info?.availability || rawProductData.availability,
+        category: data?.basic_info?.category || rawProductData.category
+      },
+      reviews: {
+        average_rating: rating,
+        total_reviews: totalReviews,
+        rating_distribution: data?.reviews?.rating_distribution || this.generateMockRatingDistribution()
+      },
+      shipping: data?.shipping || this.parseShippingInfo(rawProductData.shipping || ''),
+      price_analysis: {
+        current_price: currentPrice,
+        price_trend_7d: priceHistory,
+        lowest_price_7d: Math.min(...priceHistory),
+        highest_price_7d: Math.max(...priceHistory),
+        is_good_deal: currentPrice < originalPrice * 0.8
+      },
+      features: Array.isArray(data?.features) ? data.features : (rawProductData.features || []),
+      value_metrics: valueScore,
+      extracted_at: new Date().toISOString()
+    };
   }
 
   // Mock LLM parsing for demo purposes
