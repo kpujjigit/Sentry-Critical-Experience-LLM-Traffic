@@ -59,9 +59,11 @@ The application includes several intentional pain points perfect for demonstrati
        - `SENTRY_ENVIRONMENT` (e.g., development)
        - `HUGGING_FACE_API_KEY` (to leverage DialoGPT-medium)
        - Optional demo controls: `ARTIFICIAL_LATENCY_MS`, `ERROR_RATE_PERCENT`
+       - Project slug (for reference/CI): `BACKEND_SENTRY_PROJECT=kp-llm-throughput-backend-cx`
      - Frontend (`client/.env`):
        - `REACT_APP_SENTRY_DSN` (React project DSN: kp-llm-throughput-frontend-cx)
        - `REACT_APP_SENTRY_ENVIRONMENT`
+       - Project slug (for reference/CI): `FRONTEND_SENTRY_PROJECT=kp-llm-throughput-frontend-cx`
      - Build/upload (root `.env`):
        - `SENTRY_AUTH_TOKEN` (scoped token to upload source maps)
        - `SENTRY_ORG=team-se`
@@ -122,12 +124,14 @@ The application supports product analysis from 10 major platforms:
 - **Network Request Monitoring** with response times and error rates
 - **Real-time Error Boundary** with automatic Sentry reporting
   - Releases & Source Maps: `npm run build` creates a Sentry release and uploads CRA source maps using `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT`.
+  - Distributed Tracing: propagation enabled via `tracePropagationTargets` to link frontend→backend in a single trace
 
 ### Backend (Node.js + Express)  
 - **Distributed Tracing** across all API endpoints
 - **Custom LLM Monitoring** with inference time and confidence tracking
 - **Hugging Face Integration** using `HUGGING_FACE_API_KEY` and model `microsoft/DialoGPT-medium` with fallback to mock parser
 - **Intentional Network Latency** span `llm.network` to showcase dashboards
+  - Source Maps: Not required for this backend as code is not transpiled/minified. If you later transpile/minify, upload Node source maps for deobfuscation using sentry-cli.
 - **Performance Profiling** with CPU and memory analysis
 - **Structured Logging** with contextual breadcrumbs
 - **Error Tracking** with detailed stack traces and context

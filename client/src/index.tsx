@@ -14,6 +14,14 @@ Sentry.init({
   
   // Performance monitoring
   tracesSampleRate: 1.0, // Capture 100% of transactions for demo
+  // Replay sampling configuration belongs at the top-level
+  replaysSessionSampleRate: 1.0,
+  replaysOnErrorSampleRate: 1.0,
+  // Propagate tracing headers to backend so frontend and backend spans link in one trace
+  tracePropagationTargets: [
+    /^http:\/\/localhost:3001\//,
+    /^\/api\//
+  ],
   
   integrations: [
     // Enable automatic browser tracing
@@ -22,8 +30,6 @@ Sentry.init({
     Sentry.replayIntegration({
       maskAllText: false, // For demo purposes
       blockAllMedia: false, // For demo purposes
-      replaysSessionSampleRate: 1.0, // Capture 100% of sessions for demo
-      replaysOnErrorSampleRate: 1.0, // Capture 100% of error sessions
     }),
   ],
   
