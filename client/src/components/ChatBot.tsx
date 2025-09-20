@@ -198,17 +198,7 @@ const ChatBot: React.FC = () => {
     
     if (!urlToAnalyze) return;
 
-    // Track user interaction with Sentry
-    const transaction = Sentry.startTransaction({
-      name: 'chatbot.analyze_product',
-      op: 'ui.action.user',
-      data: {
-        input_url: urlToAnalyze,
-        input_method: url ? 'sample_button' : 'manual_input',
-        message_count: messages.length
-      }
-    });
-
+    // Basic Sentry context and user tracking
     Sentry.setUser({
       id: `user_${Date.now()}`,
       username: 'demo_user'
@@ -252,15 +242,6 @@ const ChatBot: React.FC = () => {
           data: response.data
         });
 
-        // Track successful analysis
-        transaction.setMeasurement('analysis_duration', response.data.analysis_metadata.total_duration_ms);
-        transaction.setMeasurement('product_price', response.data.basic_info.current_price);
-        transaction.setMeasurement('confidence_score', response.data.llm_metadata.confidence_score);
-        transaction.setTag('store_name', response.data.store);
-        transaction.setTag('product_category', response.data.basic_info.category);
-        transaction.setTag('analysis_success', true);
-        transaction.setStatus('ok');
-
         // Track user engagement metrics
         Sentry.addBreadcrumb({
           message: `Product analyzed: ${response.data.basic_info.title}`,
@@ -280,11 +261,6 @@ const ChatBot: React.FC = () => {
           error: true
         });
 
-        // Track failed analysis
-        transaction.setTag('analysis_success', false);
-        transaction.setTag('error_code', response.code || 'unknown');
-        transaction.setStatus('internal_error');
-
         Sentry.captureMessage('Product analysis failed', {
           level: 'warning',
           tags: {
@@ -299,8 +275,8 @@ const ChatBot: React.FC = () => {
         });
       }
     } catch (error) {
-      // Remove loading message
-      setMessages(prev => prev.filter(msg => msg.id !== loadingMessageId));
+      // Remove loading message if it exists
+      setMessages(prev => prev.filter(msg => msg.loading));
       
       addMessage({
         type: 'bot',
@@ -316,12 +292,8 @@ const ChatBot: React.FC = () => {
           url: urlToAnalyze
         }
       });
-
-      transaction.setTag('analysis_success', false);
-      transaction.setStatus('internal_error');
     } finally {
       setIsLoading(false);
-      transaction.finish();
     }
   };
 

@@ -5,7 +5,7 @@ import App from './App';
 import './index.css';
 import reportWebVitals from './reportWebVitals';
 
-// Initialize Sentry
+// Initialize Sentry - simplified for compatibility
 Sentry.init({
   dsn: process.env.REACT_APP_SENTRY_DSN,
   environment: process.env.REACT_APP_SENTRY_ENVIRONMENT || 'development',
@@ -17,58 +17,23 @@ Sentry.init({
   
   integrations: [
     // Enable automatic browser tracing
-    new Sentry.BrowserTracing({
-      // Capture clicks, inputs, and navigation
-      tracingOrigins: ['localhost', /^\/api/],
-      // Capture Web Vitals
-      markLcpTransaction: true,
-      markFidTransaction: true,
-      markFcpTransaction: true,
-      markTtfbTransaction: true,
-    }),
-    // Enable Session Replay for debugging
-    new Sentry.Replay({
-      maskAllText: false, // For demo purposes, don't mask text
-      blockAllMedia: false, // For demo purposes, don't block media
-      sampleRate: 1.0, // Capture 100% of sessions for demo
-      errorSampleRate: 1.0, // Capture 100% of error sessions
+    Sentry.browserTracingIntegration(),
+    // Enable Session Replay for debugging  
+    Sentry.replayIntegration({
+      maskAllText: false, // For demo purposes
+      blockAllMedia: false, // For demo purposes
+      replaysSessionSampleRate: 1.0, // Capture 100% of sessions for demo
+      replaysOnErrorSampleRate: 1.0, // Capture 100% of error sessions
     }),
   ],
   
-  // Configure beforeSend for custom error processing
-  beforeSend(event, hint) {
-    // Add custom tags for demo filtering
-    if (event.tags) {
-      event.tags.demo_app = 'llm_traffic';
-      event.tags.component = 'frontend';
-    } else {
-      event.tags = {
-        demo_app: 'llm_traffic',
-        component: 'frontend'
-      };
-    }
-    
-    // Log errors in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Sentry Frontend Error:', event.exception || event.message);
-    }
-    
-    return event;
-  },
-  
-  // Configure beforeSendTransaction for custom transaction processing
-  beforeSendTransaction(event) {
-    // Add custom tags for demo filtering
-    if (event.tags) {
-      event.tags.demo_app = 'llm_traffic';
-      event.tags.component = 'frontend';
-    } else {
-      event.tags = {
-        demo_app: 'llm_traffic',
-        component: 'frontend'
-      };
-    }
-    
+  beforeSend(event) {
+    // Add demo tags
+    event.tags = {
+      ...event.tags,
+      demo_app: 'llm_traffic',
+      component: 'frontend'
+    };
     return event;
   }
 });
@@ -83,28 +48,15 @@ root.render(
   </React.StrictMode>
 );
 
-// Report Web Vitals to Sentry
+// Basic Web Vitals reporting
 reportWebVitals((metric) => {
-  // Send Web Vitals to Sentry
-  const { name, value, delta, entries } = metric;
+  console.log('Web Vital:', metric);
   
+  // Basic Sentry breadcrumb
   Sentry.addBreadcrumb({
     category: 'web-vitals',
-    message: `${name}: ${value}`,
+    message: `${metric.name}: ${metric.value}`,
     level: 'info',
-    data: {
-      name,
-      value,
-      delta,
-      entries: entries.length
-    }
+    data: metric
   });
-  
-  // Also send as custom measurement
-  const transaction = Sentry.getCurrentHub().getScope()?.getTransaction();
-  if (transaction) {
-    transaction.setMeasurement(name, value, 'millisecond');
-  }
-  
-  console.log('Web Vital:', metric);
 });
