@@ -281,6 +281,36 @@ class SimulatorService {
     const startTime = Date.now();
     const url = this.getRandomUrl();
     
+    // Simulate basic frontend user actions to better impersonate a live user
+    try {
+      const pageSpan = sessionTransaction.startChild({
+        op: 'ui.page.load',
+        description: 'User opens app'
+      });
+      await new Promise(r => setTimeout(r, Math.floor(Math.random() * 200) + 100));
+      pageSpan.setTag('component', 'frontend');
+      pageSpan.setTag('simulated_ui', true);
+      pageSpan.finish();
+
+      const pasteSpan = sessionTransaction.startChild({
+        op: 'ui.input',
+        description: 'Paste product URL'
+      });
+      pasteSpan.setData('url', url);
+      pasteSpan.setTag('component', 'frontend');
+      pasteSpan.setTag('simulated_ui', true);
+      await new Promise(r => setTimeout(r, Math.floor(Math.random() * 200) + 100));
+      pasteSpan.finish();
+
+      const actionOp = Math.random() < 0.5 ? 'ui.key.enter' : 'ui.click';
+      const actionDesc = actionOp === 'ui.key.enter' ? 'Press Enter to analyze' : 'Click Analyze button';
+      const actionSpan = sessionTransaction.startChild({ op: actionOp, description: actionDesc });
+      actionSpan.setTag('component', 'frontend');
+      actionSpan.setTag('simulated_ui', true);
+      await new Promise(r => setTimeout(r, Math.floor(Math.random() * 150) + 75));
+      actionSpan.finish();
+    } catch (_) {}
+
     // Create request span
     const requestSpan = sessionTransaction.startChild({
       op: 'simulation.request',
@@ -324,6 +354,18 @@ class SimulatorService {
       requestSpan.setStatus('ok');
       requestSpan.finish();
       
+      // Simulate UI rendering of results
+      try {
+        const renderSpan = sessionTransaction.startChild({
+          op: 'ui.render',
+          description: 'Render analysis results'
+        });
+        renderSpan.setTag('component', 'frontend');
+        renderSpan.setTag('simulated_ui', true);
+        await new Promise(r => setTimeout(r, Math.floor(Math.random() * 250) + 100));
+        renderSpan.finish();
+      } catch (_) {}
+
       console.log(`${userBehavior.name} analyzed ${url} in ${responseTime}ms`);
       
     } catch (error) {
