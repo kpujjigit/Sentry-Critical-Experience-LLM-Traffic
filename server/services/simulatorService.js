@@ -168,7 +168,7 @@ class SimulatorService {
   }
 
   async runSimulation(simulation, transaction) {
-    console.log(`🎯 Starting simulation ${simulation.id} with ${simulation.sessions} sessions`);
+    console.log(`Starting simulation ${simulation.id} with ${simulation.sessions} sessions`);
     
     const promises = [];
     
@@ -187,7 +187,7 @@ class SimulatorService {
     const results = await Promise.allSettled(promises);
     
     simulation.isRunning = false;
-    console.log(`✅ Simulation ${simulation.id} completed`);
+    console.log(`Simulation ${simulation.id} completed`);
 
     // Add final metrics to transaction
     if (transaction) {
@@ -220,7 +220,7 @@ class SimulatorService {
     sessionTransaction.setTag('user_behavior', userBehavior.name);
     sessionTransaction.setTag('session_id', sessionId);
     
-    console.log(`👤 Starting ${userBehavior.name} session ${sessionIndex + 1}/${simulation.sessions}`);
+    console.log(`Starting ${userBehavior.name} session ${sessionIndex + 1}/${simulation.sessions}`);
     
     try {
       const sessionLength = Math.floor(
@@ -313,7 +313,7 @@ class SimulatorService {
       requestSpan.setStatus('ok');
       requestSpan.finish();
       
-      console.log(`✅ ${userBehavior.name} analyzed ${url} in ${responseTime}ms`);
+      console.log(`${userBehavior.name} analyzed ${url} in ${responseTime}ms`);
       
     } catch (error) {
       const responseTime = Date.now() - startTime;
@@ -327,11 +327,11 @@ class SimulatorService {
       requestSpan.setStatus('internal_error');
       requestSpan.finish();
       
-      console.log(`❌ ${userBehavior.name} failed to analyze ${url}: ${error.message}`);
+      console.log(`${userBehavior.name} failed to analyze ${url}: ${error.message}`);
       
       // Decide whether to retry based on user behavior
       if (Math.random() < userBehavior.errorTolerance) {
-        console.log(`🔄 ${userBehavior.name} retrying request...`);
+        console.log(`${userBehavior.name} retrying request...`);
         // Simulate retry delay
         await new Promise(resolve => setTimeout(resolve, 1000));
         return this.simulateUserRequest(simulation, userBehavior, sessionId, sessionTransaction);

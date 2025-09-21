@@ -43,7 +43,7 @@ const Header: React.FC = () => {
     <HeaderContainer>
       <HeaderContent>
         <div>
-          <Title>🤖 E-commerce AI Assistant</Title>
+          <Title>E-commerce AI Assistant</Title>
           <Subtitle>Powered by LLM • Monitored by Sentry</Subtitle>
         </div>
         <Badge>Demo Mode</Badge>

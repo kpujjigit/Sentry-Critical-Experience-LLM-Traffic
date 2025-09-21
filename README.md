@@ -67,7 +67,7 @@ The application includes several intentional pain points perfect for demonstrati
      - Build/upload (root `.env`):
        - `SENTRY_AUTH_TOKEN` (scoped token to upload source maps)
        - `SENTRY_ORG=team-se`
-       - `SENTRY_PROJECT=kp-llm-throughput-frontend-cx`
+      - `SENTRY_PROJECT=kp-llm-throughput-front-cx`
 
 3. **Start the application**
    ```bash
@@ -135,7 +135,7 @@ The application supports product analysis from 10 major platforms:
 ### Backend (Node.js + Express)  
 - **Distributed Tracing** across all API endpoints
 - **Custom LLM Monitoring** with inference time and confidence tracking
-- **Hugging Face Integration** using `HUGGING_FACE_API_KEY` and model `microsoft/DialoGPT-medium` with fallback to mock parser
+- **Hugging Face Integration** using `HUGGING_FACE_API_KEY` and model `meta-llama/Llama-3.1-8B-Instruct` (override with `HF_MODEL`) with fallback to mock parser
 - **Intentional Network Latency** span `llm.network` to showcase dashboards
   - Source Maps: Not required for this backend as code is not transpiled/minified. If you later transpile/minify, upload Node source maps for deobfuscation using sentry-cli.
 - **Performance Profiling** with CPU and memory analysis

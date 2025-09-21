@@ -238,7 +238,7 @@ const Simulator: React.FC = () => {
   return (
     <SimulatorContainer>
       <SimulatorHeader>
-        🎯 Traffic Simulator
+        Traffic Simulator
       </SimulatorHeader>
 
       <SimulatorBody>
@@ -336,7 +336,7 @@ const Simulator: React.FC = () => {
         )}
 
         <InfoBox>
-          <InfoTitle>💡 About the Simulator</InfoTitle>
+          <InfoTitle>About the Simulator</InfoTitle>
           <InfoText>
             This simulator creates realistic user sessions that interact with the LLM API. 
             Different user behaviors are simulated (quick browsers, thorough researchers, etc.) 

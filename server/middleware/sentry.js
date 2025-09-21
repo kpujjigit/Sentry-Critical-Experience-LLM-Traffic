@@ -97,10 +97,10 @@ const setupSentry = (app) => {
     next();
   });
 
-  console.log('✅ Sentry initialized successfully');
-  console.log(`📊 Environment: ${process.env.SENTRY_ENVIRONMENT || 'development'}`);
-  console.log(`🔄 Traces Sample Rate: 100%`);
-  console.log(`📈 Profiles Sample Rate: 100%`);
+  console.log('Sentry initialized successfully');
+  console.log(`Environment: ${process.env.SENTRY_ENVIRONMENT || 'development'}`);
+  console.log(`Traces Sample Rate: 100%`);
+  console.log(`Profiles Sample Rate: 100%`);
 };
 
 // Helper function to create custom spans

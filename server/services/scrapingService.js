@@ -50,7 +50,7 @@ const scrapeProductPage = async (url) => {
   const startTime = Date.now();
   
   // Get current transaction for creating child spans
-  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
   
   try {
     // Create main scraping span
@@ -70,7 +70,7 @@ const scrapeProductPage = async (url) => {
     // Simulate occasional scraping failures for demo
     simulateError('scraping_failure', 0.08); // 8% failure rate
 
-    console.log(`🕷️ Scraping product from: ${url}`);
+    console.log(`Scraping product from: ${url}`);
     
     // Determine which mock data to use based on URL
     let mockData;
@@ -148,11 +148,11 @@ const scrapeProductPage = async (url) => {
       }
     });
 
-    console.log(`✅ Successfully scraped product: ${scrapedData.title}`);
+    console.log(`Successfully scraped product: ${scrapedData.title}`);
     return scrapedData;
 
   } catch (error) {
-    console.error('❌ Scraping failed:', error);
+    console.error('Scraping failed:', error);
     
     const scrapingDuration = Date.now() - startTime;
     
@@ -182,7 +182,7 @@ const scrapeProductPage = async (url) => {
 };
 
 const validateUrl = (url) => {
-  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
   
   try {
     const parsedUrl = new URL(url);

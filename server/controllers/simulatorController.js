@@ -5,7 +5,7 @@ let currentSimulation = null;
 
 const startSimulation = async (req, res) => {
   // Start Sentry transaction for simulation
-  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
   if (transaction) {
     transaction.setName('simulation.start');
     transaction.setTag('operation_type', 'simulation_control');
@@ -64,7 +64,7 @@ const startSimulation = async (req, res) => {
       });
     }
 
-    console.log(`🎯 Starting simulation: ${sessions} sessions with ${delay}ms delay`);
+    console.log(`Starting simulation: ${sessions} sessions with ${delay}ms delay`);
     
     // Add simulation context to Sentry
     Sentry.setTag('simulation_sessions', sessions.toString());
@@ -113,7 +113,7 @@ const startSimulation = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Failed to start simulation:', error);
+    console.error('Failed to start simulation:', error);
     
     Sentry.captureException(error, {
       tags: {
@@ -135,7 +135,7 @@ const startSimulation = async (req, res) => {
 };
 
 const stopSimulation = async (req, res) => {
-  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
   if (transaction) {
     transaction.setName('simulation.stop');
     transaction.setTag('operation_type', 'simulation_control');
@@ -189,7 +189,7 @@ const stopSimulation = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Failed to stop simulation:', error);
+    console.error('Failed to stop simulation:', error);
     
     Sentry.captureException(error, {
       tags: {
@@ -207,7 +207,7 @@ const stopSimulation = async (req, res) => {
 };
 
 const getSimulationStatus = (req, res) => {
-  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
   if (transaction) {
     transaction.setName('simulation.status');
     transaction.setTag('operation_type', 'simulation_status');

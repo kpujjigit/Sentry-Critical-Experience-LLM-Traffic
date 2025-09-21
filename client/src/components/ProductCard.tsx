@@ -189,7 +189,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onClose }) => {
 
       <CardBody>
         <Section>
-          <SectionTitle>💰 Pricing</SectionTitle>
+          <SectionTitle>Pricing</SectionTitle>
           <PriceContainer>
             <CurrentPrice>${product.basic_info.current_price.toFixed(2)}</CurrentPrice>
             {product.basic_info.original_price !== product.basic_info.current_price && (
@@ -201,13 +201,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onClose }) => {
           </PriceContainer>
           {product.price_analysis.is_good_deal && (
             <div style={{ color: '#48bb78', fontSize: '0.9rem', fontWeight: '600' }}>
-              🎉 Great deal! Price is {((product.basic_info.original_price - product.basic_info.current_price) / product.basic_info.original_price * 100).toFixed(0)}% below original
+              Great deal! Price is {((product.basic_info.original_price - product.basic_info.current_price) / product.basic_info.original_price * 100).toFixed(0)}% below original
             </div>
           )}
         </Section>
 
         <Section>
-          <SectionTitle>⭐ Reviews</SectionTitle>
+          <SectionTitle>Reviews</SectionTitle>
           <Rating>
             <Stars>{renderStars(product.reviews.average_rating)}</Stars>
             <RatingText>
@@ -217,7 +217,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onClose }) => {
         </Section>
 
         <Section>
-          <SectionTitle>🚚 Shipping</SectionTitle>
+          <SectionTitle>Shipping</SectionTitle>
           <div style={{ color: product.shipping.is_free ? '#48bb78' : '#4a5568' }}>
             {product.shipping.description}
             {product.shipping.is_fast && ' • Fast delivery'}
@@ -225,7 +225,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onClose }) => {
         </Section>
 
         <Section>
-          <SectionTitle>✨ Features</SectionTitle>
+          <SectionTitle>Features</SectionTitle>
           <Features>
             {product.features.map((feature, index) => (
               <FeatureTag key={index}>{feature}</FeatureTag>
@@ -234,7 +234,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onClose }) => {
         </Section>
 
         <Section>
-          <SectionTitle>🎯 Value Score</SectionTitle>
+          <SectionTitle>Value Score</SectionTitle>
           <ValueScore score={product.value_metrics.overall_score}>
             <ScoreValue>{product.value_metrics.overall_score}/100</ScoreValue>
             <ScoreLabel>{product.value_metrics.recommendation}</ScoreLabel>

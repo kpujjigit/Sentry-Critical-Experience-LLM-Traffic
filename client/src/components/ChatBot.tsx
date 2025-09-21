@@ -330,7 +330,7 @@ const ChatBot: React.FC = () => {
   return (
     <ChatContainer>
       <ChatHeader>
-        💬 Product Analysis Chat
+        Product Analysis Chat
       </ChatHeader>
       
       <MessagesContainer>

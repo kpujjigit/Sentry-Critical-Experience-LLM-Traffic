@@ -21,7 +21,7 @@ const analyzeProduct = async (req, res) => {
   const { url } = req.body;
   
   // Start main Sentry transaction
-  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
   if (transaction) {
     transaction.setName('product.analyze');
     transaction.setTag('operation_type', 'product_analysis');
@@ -109,7 +109,7 @@ const analyzeProduct = async (req, res) => {
       url_valid: true
     });
 
-    console.log(`🔍 Starting product analysis for: ${url}`);
+    console.log(`Starting product analysis for: ${url}`);
 
     // Step 1: Scrape the product page with Sentry span
     const scrapingStartTime = Date.now();
@@ -244,7 +244,7 @@ const analyzeProduct = async (req, res) => {
 
 const getSupportedStores = (req, res) => {
   // Simple endpoint with basic Sentry tracking
-  const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+  const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
   if (transaction) {
     transaction.setName('stores.list');
     transaction.setTag('operation_type', 'metadata_request');

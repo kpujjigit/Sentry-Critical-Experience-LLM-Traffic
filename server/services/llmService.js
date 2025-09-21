@@ -6,18 +6,18 @@ const { Sentry, createLLMSpan, createSpan, finishSpan } = require('../middleware
 class LLMService {
   constructor() {
     this.apiKey = process.env.HUGGING_FACE_API_KEY;
-    this.model = 'microsoft/DialoGPT-medium'; // Free model for demo
+    this.model = process.env.HF_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
     this.baseUrl = 'https://api-inference.huggingface.co/models';
   }
 
   async parseProductData(rawProductData, url) {
     const startTime = Date.now();
     
-    // Get current transaction for creating child spans
-    const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+    // Get active span/transaction for creating child spans (fallback to hub lookup)
+    const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
     
     try {
-      console.log('🤖 Starting LLM product data parsing...');
+      console.log('Starting LLM product data parsing...');
       
       // Create main LLM span
       const llmSpan = createLLMSpan(transaction, 'inference', this.model, JSON.stringify(rawProductData));
@@ -102,7 +102,7 @@ class LLMService {
       });
       
       const processingTime = Date.now() - startTime;
-      console.log(`✅ LLM processing completed in ${processingTime}ms`);
+      console.log(`LLM processing completed in ${processingTime}ms`);
       
       const finalData = {
         ...structuredData,
@@ -140,7 +140,7 @@ class LLMService {
       return finalData;
       
     } catch (error) {
-      console.error('❌ LLM processing failed:', error);
+      console.error('LLM processing failed:', error);
       
       const processingTime = Date.now() - startTime;
       
@@ -301,7 +301,7 @@ class LLMService {
 
   // Mock LLM parsing for demo purposes
   async mockLLMParsing(rawProductData, url) {
-    const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+    const transaction = (Sentry.getActiveSpan && Sentry.getActiveSpan()) || Sentry.getCurrentHub().getScope().getTransaction();
     
     // Add some processing variation to simulate real LLM behavior
     const parsingSpan = createSpan(transaction, {
