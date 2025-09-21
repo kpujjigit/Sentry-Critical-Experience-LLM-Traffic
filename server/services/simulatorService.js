@@ -210,11 +210,18 @@ class SimulatorService {
     const userBehavior = this.selectUserBehavior();
     const sessionId = `session_${sessionIndex}_${Date.now()}`;
     
-    // Create session transaction as child of simulation
-    const sessionTransaction = parentTransaction.startChild({
+    // Create a ROOT transaction for this session so it gets its own trace id
+    const sessionTransaction = Sentry.startTransaction({
+      name: 'simulation.session',
       op: 'simulation.session',
       description: `${userBehavior.name} session ${sessionIndex + 1}`
     });
+    // Bind this transaction to the current scope so HTTP instrumentation propagates this trace
+    try {
+      Sentry.getCurrentHub().configureScope(scope => {
+        scope.setSpan(sessionTransaction);
+      });
+    } catch (_) {}
     
     sessionTransaction.setTag('session_index', sessionIndex.toString());
     sessionTransaction.setTag('user_behavior', userBehavior.name);
@@ -228,7 +235,8 @@ class SimulatorService {
         userBehavior.sessionLength.min
       );
 
-      sessionTransaction.setMeasurement('planned_requests', sessionLength);
+      // Spans do not support setMeasurement; use setData instead
+      sessionTransaction.setData('planned_requests', sessionLength);
 
       // Simulate user requests in this session
       for (let req = 0; req < sessionLength && simulation.isRunning; req++) {
@@ -246,10 +254,11 @@ class SimulatorService {
       const sessionDuration = Date.now() - sessionStartTime;
       simulation.statistics.sessionDurations.push(sessionDuration);
       
-      sessionTransaction.setMeasurement('session_duration_ms', sessionDuration);
+      sessionTransaction.setData('session_duration_ms', sessionDuration);
       sessionTransaction.setTag('session_completed', true);
       sessionTransaction.setStatus('ok');
       sessionTransaction.finish();
+      try { Sentry.getCurrentHub().configureScope(scope => scope.setSpan(undefined)); } catch (_) {}
       
     } catch (error) {
       console.error(`❌ Session ${sessionIndex} failed:`, error.message);
@@ -264,6 +273,7 @@ class SimulatorService {
       sessionTransaction.setTag('error_type', errorType);
       sessionTransaction.setStatus('internal_error');
       sessionTransaction.finish();
+      try { Sentry.getCurrentHub().configureScope(scope => scope.setSpan(undefined)); } catch (_) {}
     }
   }
 
@@ -300,7 +310,8 @@ class SimulatorService {
       simulation.statistics.responseTimes.push(responseTime);
       simulation.statistics.successfulRequests++;
       
-      requestSpan.setMeasurement('response_time_ms', responseTime);
+      // Spans do not support setMeasurement; use setData instead
+      requestSpan.setData('response_time_ms', responseTime);
       requestSpan.setTag('request_success', true);
       requestSpan.setTag('response_status', response.status.toString());
       
@@ -320,7 +331,7 @@ class SimulatorService {
       simulation.statistics.responseTimes.push(responseTime);
       simulation.statistics.failedRequests++;
       
-      requestSpan.setMeasurement('response_time_ms', responseTime);
+      requestSpan.setData('response_time_ms', responseTime);
       requestSpan.setTag('request_success', false);
       requestSpan.setTag('error_code', error.code || 'UNKNOWN_ERROR');
       requestSpan.setTag('error_message', error.message);
